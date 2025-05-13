@@ -8,3 +8,4 @@ class Config:
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     UPLOAD_FOLDER = os.path.join(basedir, 'backups')
     CIPHER_KEY = os.environ.get("CIPHER_KEY")
+    PORT = os.environ.get("PORT", 10000)

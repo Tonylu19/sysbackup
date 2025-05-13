@@ -45,3 +45,27 @@ def register():
 def logout():
     logout_user()
     return redirect(url_for("auth.login"))
+
+@auth.route('/perfil', methods=['GET', 'POST'])
+@login_required
+def perfil():
+    if request.method == 'POST':
+        nuevo_usuario = request.form.get("username")
+        nueva_clave = request.form.get("password")
+
+        if nuevo_usuario:
+            existe = User.query.filter_by(username=nuevo_usuario).first()
+            if existe and existe.id != current_user.id:
+                flash("Ese nombre de usuario ya está en uso.")
+                return redirect(url_for("auth.perfil"))
+            current_user.username = nuevo_usuario
+
+        if nueva_clave:
+            hashed = generate_password_hash(nueva_clave)
+            current_user.password = hashed
+
+        db.session.commit()
+        flash("Perfil actualizado correctamente.")
+        return redirect(url_for("main.index"))
+
+    return render_template("perfil.html")

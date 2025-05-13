@@ -17,5 +17,5 @@ class Backup(db.Model):
     size_kb = db.Column(db.Float, nullable=False)
     timestamp = db.Column(db.DateTime, nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-
+    eliminado = db.Column(db.Boolean, default=False)
     user = db.relationship('User', backref='backups')

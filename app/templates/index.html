@@ -12,6 +12,7 @@
     <p><a href="{{ url_for('auth.logout') }}" class="btn btn-outline-danger btn-sm">Cerrar sesión</a></p>
     <p><a href="{{ url_for('main.historial') }}" class="btn btn-outline-info btn-sm">Ver historial de actividad</a></p>
     <p><a href="{{ url_for('auth.perfil') }}" class="btn btn-outline-primary btn-sm">Editar perfil</a></p>
+    <p><a href="{{ url_for('main.papelera') }}" class="btn btn-outline-warning btn-sm">Ver papelera</a></p>
 
     {% with messages = get_flashed_messages() %}
       {% if messages %}

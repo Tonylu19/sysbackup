@@ -7,6 +7,8 @@ import os
 from app.crypto_utils import encrypt_file, decrypt_file
 from app.database import Backup
 from app.extensions import db
+from gdrive_upload import upload_to_drive
+
 
 main = Blueprint("main", __name__)
 
@@ -15,7 +17,8 @@ main = Blueprint("main", __name__)
 def index():
     query = request.args.get("q", "").lower()
 
-    backups = Backup.query.filter_by(user_id=current_user.id).order_by(Backup.timestamp.desc()).all()
+    backups = Backup.query.filter_by(user_id=current_user.id, eliminado=False).order_by(Backup.timestamp.desc()).all()
+
 
     files = []
     for backup in backups:
@@ -52,11 +55,23 @@ def upload_file():
     size_kb = os.path.getsize(path) / 1024
     now = datetime.now()
 
-    new_backup = Backup(filename=filename, size_kb=size_kb, timestamp=now, user_id=current_user.id)
+    # 👇 Subida automática a Google Drive
+    try:
+        drive_file_id = upload_to_drive(path, filename)
+        flash(f"Archivo subido correctamente y respaldado en Google Drive. ID: {drive_file_id}")
+    except Exception as e:
+        flash(f"Error al subir a Google Drive: {e}")
+        drive_file_id = None
+
+    new_backup = Backup(
+        filename=filename,
+        size_kb=size_kb,
+        timestamp=now,
+        user_id=current_user.id
+    )
     db.session.add(new_backup)
     db.session.commit()
 
-    flash(f"Archivo '{file.filename}' subido correctamente.")
     return redirect(url_for("main.index"))
 
 @main.route("/download/<filename>")
@@ -93,14 +108,14 @@ def delete_file(filename):
         return redirect(url_for("main.index"))
 
     file_path = os.path.join(current_app.config["UPLOAD_FOLDER"], filename)
-
     if os.path.isfile(file_path):
         os.remove(file_path)
 
-    db.session.delete(backup)
+    backup.eliminado = True  # 👈 Solo lo marca como eliminado
     db.session.commit()
-    flash(f"Archivo '{filename}' eliminado.")
+    flash(f"Archivo '{filename}' movido a la papelera.")
     return redirect(url_for("main.index"))
+
 
 @main.route("/historial")
 @login_required
@@ -119,3 +134,32 @@ def historial():
         })
 
     return render_template("historial.html", registros=registros)
+
+@main.route("/papelera")
+@login_required
+def papelera():
+    backups = Backup.query.filter_by(user_id=current_user.id, eliminado=True).order_by(Backup.timestamp.desc()).all()
+
+    archivos = []
+    for b in backups:
+        archivos.append({
+            "name": b.filename,
+            "size": f"{b.size_kb:.1f} KB",
+            "date": b.timestamp.strftime('%Y-%m-%d %H:%M')
+        })
+
+    return render_template("papelera.html", archivos=archivos)
+
+@main.route("/restaurar/<filename>", methods=["POST"])
+@login_required
+def restaurar_file(filename):
+    backup = Backup.query.filter_by(filename=filename, user_id=current_user.id).first()
+    if not backup:
+        flash("Archivo no encontrado.")
+        return redirect(url_for("main.papelera"))
+
+    backup.eliminado = False
+    db.session.commit()
+    flash(f"Archivo '{filename}' restaurado.")
+    return redirect(url_for("main.papelera"))
+

@@ -9,5 +9,4 @@ class Config:
     UPLOAD_FOLDER = os.path.join(basedir, 'backups')
     CIPHER_KEY = os.environ.get("CIPHER_KEY") or "32_bytes_aes_encryption_key_123456"
 
-# Puerto para Render (o por defecto 10000 en local)
 PORT = int(os.environ.get("PORT", 10000))

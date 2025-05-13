@@ -101,3 +101,21 @@ def delete_file(filename):
     db.session.commit()
     flash(f"Archivo '{filename}' eliminado.")
     return redirect(url_for("main.index"))
+
+@main.route("/historial")
+@login_required
+def historial():
+    backups = Backup.query.filter_by(user_id=current_user.id).order_by(Backup.timestamp.desc()).all()
+
+    registros = []
+    for b in backups:
+        full_path = os.path.join(current_app.config["UPLOAD_FOLDER"], b.filename)
+        existe = os.path.isfile(full_path)
+        registros.append({
+            "name": b.filename,
+            "size": f"{b.size_kb:.1f} KB",
+            "date": b.timestamp.strftime('%Y-%m-%d %H:%M'),
+            "status": "Disponible" if existe else "Eliminado"
+        })
+
+    return render_template("historial.html", registros=registros)

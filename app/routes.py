@@ -1,34 +1,31 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app, send_file
-from flask_login import login_required
-import os
+from flask_login import login_required, current_user
 from io import BytesIO
-from app.crypto_utils import encrypt_file, decrypt_file
 from datetime import datetime
-from flask import request
+import os
 
+from app.crypto_utils import encrypt_file, decrypt_file
+from app.database import Backup
+from app.extensions import db
 
 main = Blueprint("main", __name__)
 
 @main.route("/", methods=["GET"])
 @login_required
 def index():
-    folder = current_app.config["UPLOAD_FOLDER"]
     query = request.args.get("q", "").lower()
+
+    backups = Backup.query.filter_by(user_id=current_user.id).order_by(Backup.timestamp.desc()).all()
+
     files = []
-
-    for filename in os.listdir(folder):
-        if filename.endswith(".enc"):
-            if query and query not in filename.lower():
-                continue
-
-            path = os.path.join(folder, filename)
-            size_kb = os.path.getsize(path) / 1024
-            timestamp = os.path.getmtime(path)
-            files.append({
-                "name": filename,
-                "size": f"{size_kb:.1f} KB",
-                "date": datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M')
-            })
+    for backup in backups:
+        if query and query not in backup.filename.lower():
+            continue
+        files.append({
+            "name": backup.filename,
+            "size": f"{backup.size_kb:.1f} KB",
+            "date": backup.timestamp.strftime('%Y-%m-%d %H:%M')
+        })
 
     return render_template("index.html", files=files, query=query)
 
@@ -47,20 +44,32 @@ def upload_file():
     raw_data = file.read()
     encrypted_data = encrypt_file(raw_data)
 
-    output_path = os.path.join(current_app.config["UPLOAD_FOLDER"], file.filename + ".enc")
-    with open(output_path, "wb") as f:
+    filename = file.filename + ".enc"
+    path = os.path.join(current_app.config["UPLOAD_FOLDER"], filename)
+    with open(path, "wb") as f:
         f.write(encrypted_data)
 
-    flash(f"Archivo '{file.filename}' cifrado y guardado exitosamente.")
+    size_kb = os.path.getsize(path) / 1024
+    now = datetime.now()
+
+    new_backup = Backup(filename=filename, size_kb=size_kb, timestamp=now, user_id=current_user.id)
+    db.session.add(new_backup)
+    db.session.commit()
+
+    flash(f"Archivo '{file.filename}' subido correctamente.")
     return redirect(url_for("main.index"))
 
 @main.route("/download/<filename>")
 @login_required
 def download_file(filename):
-    enc_path = os.path.join(current_app.config["UPLOAD_FOLDER"], filename)
+    backup = Backup.query.filter_by(filename=filename, user_id=current_user.id).first()
+    if not backup:
+        flash("Archivo no encontrado o no autorizado.")
+        return redirect(url_for("main.index"))
 
+    enc_path = os.path.join(current_app.config["UPLOAD_FOLDER"], filename)
     if not os.path.isfile(enc_path):
-        flash("El archivo no existe.")
+        flash("El archivo no existe en el servidor.")
         return redirect(url_for("main.index"))
 
     with open(enc_path, "rb") as f:
@@ -74,15 +83,21 @@ def download_file(filename):
         as_attachment=True,
         download_name=original_name
     )
+
 @main.route("/delete/<filename>", methods=["POST"])
 @login_required
 def delete_file(filename):
+    backup = Backup.query.filter_by(filename=filename, user_id=current_user.id).first()
+    if not backup:
+        flash("No tienes permiso para eliminar este archivo.")
+        return redirect(url_for("main.index"))
+
     file_path = os.path.join(current_app.config["UPLOAD_FOLDER"], filename)
 
     if os.path.isfile(file_path):
         os.remove(file_path)
-        flash(f"Archivo '{filename}' eliminado.")
-    else:
-        flash("Archivo no encontrado.")
 
+    db.session.delete(backup)
+    db.session.commit()
+    flash(f"Archivo '{filename}' eliminado.")
     return redirect(url_for("main.index"))

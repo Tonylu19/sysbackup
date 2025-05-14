@@ -1,3 +1,14 @@
 credentials.json
 __pycache__/
 .env
+
+client_secret.json
+tokens/
+*.json
+
+*.py[cod]
+venv/
+*.log
+
+.vscode/
+.DS_Store

@@ -2,84 +2,76 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Panel SYSBACKUP</title>
+    <title>SYSBACKUP | Panel</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #f8f9fa; }
+        .card-hover:hover { box-shadow: 0 0 10px rgba(0,0,0,0.15); transition: 0.3s; }
+        .drive-status { font-size: 0.9rem; }
+    </style>
 </head>
-<body class="bg-light">
-
-<div class="container py-5">
-    <h1 class="mb-4 text-primary">Bienvenido a <strong>SYSBACKUP</strong></h1>
-    <p><a href="{{ url_for('auth.logout') }}" class="btn btn-outline-danger btn-sm">Cerrar sesión</a></p>
-    <p><a href="{{ url_for('main.historial') }}" class="btn btn-outline-info btn-sm">Ver historial de actividad</a></p>
-    <p><a href="{{ url_for('auth.perfil') }}" class="btn btn-outline-primary btn-sm">Editar perfil</a></p>
-    <p><a href="{{ url_for('main.papelera') }}" class="btn btn-outline-warning btn-sm">Ver papelera</a></p>
-
-    {% with messages = get_flashed_messages() %}
-      {% if messages %}
-        <div class="alert alert-info">
-          {% for message in messages %}
-            <div>{{ message }}</div>
-          {% endfor %}
+<body>
+    <div class="container py-4">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2>Bienvenido a <strong>SYSBACKUP</strong></h2>
+            <a href="{{ url_for('auth.logout') }}" class="btn btn-danger btn-sm">Cerrar sesión</a>
         </div>
-      {% endif %}
-    {% endwith %}
 
-    <div class="card mb-4">
-        <div class="card-body">
-            <h4 class="card-title">Subir archivo de respaldo</h4>
-            <form method="POST" action="{{ url_for('main.upload_file') }}" enctype="multipart/form-data">
-                <div class="mb-3">
-                    <input type="file" name="file" class="form-control" required>
-                </div>
-                <button type="submit" class="btn btn-primary">Subir archivo</button>
+        <div class="mb-3">
+            <form method="GET" action="{{ url_for('main.index') }}" class="d-flex">
+                <input type="text" name="q" value="{{ query }}" placeholder="Buscar archivo..." class="form-control me-2">
+                <button type="submit" class="btn btn-outline-secondary">Buscar</button>
             </form>
         </div>
-    </div>
 
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h4 class="mb-0">Archivos respaldados</h4>
-        <form method="GET" class="d-flex align-items-center">
-            <input type="text" name="q" value="{{ query }}" placeholder="Buscar archivo..." class="form-control me-2">
-            <button type="submit" class="btn btn-outline-primary me-2">Buscar</button>
-            {% if query %}
-                <a href="{{ url_for('main.index') }}" class="btn btn-outline-secondary">Limpiar</a>
-            {% endif %}
+        {% with messages = get_flashed_messages() %}
+          {% if messages %}
+            <div class="alert alert-info">
+              {% for message in messages %}
+                <div>{{ message }}</div>
+              {% endfor %}
+            </div>
+          {% endif %}
+        {% endwith %}
+
+        <form method="POST" action="{{ url_for('main.upload_file') }}" enctype="multipart/form-data" class="card p-3 shadow-sm mb-4">
+            <label class="form-label">Seleccionar archivo para subir:</label>
+            <div class="input-group">
+                <input type="file" name="file" class="form-control" required>
+                <button type="submit" class="btn btn-primary">Subir y Cifrar</button>
+            </div>
         </form>
-    </div>
 
-    <table class="table table-striped">
-        <thead>
-            <tr>
-                <th>Nombre</th>
-                <th>Tamaño</th>
-                <th>Subido</th>
-                <th>Acciones</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for file in files %}
-            <tr>
-                <td>{{ file.name }}</td>
-                <td>{{ file.size }}</td>
-                <td>{{ file.date }}</td>
-                <td>
-                    <div class="btn-group">
-                        <a href="{{ url_for('main.download_file', filename=file.name) }}" class="btn btn-sm btn-success">Descargar</a>
-                        <form method="POST" action="{{ url_for('main.delete_file', filename=file.name) }}" onsubmit="return confirm('¿Eliminar este archivo?');">
-                            <button type="submit" class="btn btn-sm btn-danger">Eliminar</button>
-                        </form>
+        <div class="mb-4">
+            <a href="{{ url_for('main.historial') }}" class="btn btn-outline-info btn-sm">🕓 Historial</a>
+            <a href="{{ url_for('main.papelera') }}" class="btn btn-outline-warning btn-sm">🗑 Papelera</a>
+            <a href="{{ url_for('auth.perfil') }}" class="btn btn-outline-primary btn-sm">👤 Perfil</a>
+            <a href="{{ url_for('main.connect_drive') }}" class="btn btn-outline-success btn-sm">☁️ Conectar Google Drive</a>
+        </div>
+
+        <div class="row">
+            {% if files %}
+                {% for f in files %}
+                <div class="col-md-6 col-lg-4 mb-4">
+                    <div class="card card-hover">
+                        <div class="card-body">
+                            <h6 class="card-title text-truncate">{{ f.name }}</h6>
+                            <p class="mb-1"><strong>Tamaño:</strong> {{ f.size }}</p>
+                            <p class="mb-1"><strong>Fecha:</strong> {{ f.date }}</p>
+                            <div class="d-flex justify-content-between mt-3">
+                                <a href="{{ url_for('main.download_file', filename=f.name) }}" class="btn btn-sm btn-success">⬇️ Descargar</a>
+                                <form action="{{ url_for('main.delete_file', filename=f.name) }}" method="POST">
+                                    <button type="submit" class="btn btn-sm btn-danger">🗑 Eliminar</button>
+                                </form>
+                            </div>
+                        </div>
                     </div>
-                </td>
-            </tr>
+                </div>
+                {% endfor %}
             {% else %}
-            <tr>
-                <td colspan="4" class="text-muted text-center">No hay archivos aún.</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-</div>
-
+                <p class="text-muted">No hay backups disponibles.</p>
+            {% endif %}
+        </div>
+    </div>
 </body>
 </html>
-

@@ -7,8 +7,9 @@ import os
 from app.crypto_utils import encrypt_file, decrypt_file
 from app.database import Backup
 from app.extensions import db
-from gdrive_upload import upload_to_drive
-
+from gdrive_oauth import get_flow, save_user_token, create_drive_service
+from werkzeug.utils import secure_filename
+from googleapiclient.http import MediaFileUpload
 
 main = Blueprint("main", __name__)
 
@@ -16,59 +17,45 @@ main = Blueprint("main", __name__)
 @login_required
 def index():
     query = request.args.get("q", "").lower()
-
     backups = Backup.query.filter_by(user_id=current_user.id, eliminado=False).order_by(Backup.timestamp.desc()).all()
-
-
-    files = []
-    for backup in backups:
-        if query and query not in backup.filename.lower():
-            continue
-        files.append({
-            "name": backup.filename,
-            "size": f"{backup.size_kb:.1f} KB",
-            "date": backup.timestamp.strftime('%Y-%m-%d %H:%M')
-        })
-
+    files = [{
+        "name": b.filename,
+        "size": f"{b.size_kb:.1f} KB",
+        "date": b.timestamp.strftime('%Y-%m-%d %H:%M')
+    } for b in backups if not query or query in b.filename.lower()]
     return render_template("index.html", files=files, query=query)
 
 @main.route("/upload", methods=["POST"])
 @login_required
 def upload_file():
-    if "file" not in request.files:
+    if "file" not in request.files or request.files["file"].filename == "":
         flash("No se seleccionó ningún archivo.")
         return redirect(url_for("main.index"))
 
     file = request.files["file"]
-    if file.filename == "":
-        flash("Nombre de archivo vacío.")
-        return redirect(url_for("main.index"))
+    original_filename = secure_filename(file.filename)
+    encrypted_data = encrypt_file(file.read())
+    encrypted_filename = original_filename + ".enc"
+    local_path = os.path.join(current_app.config["UPLOAD_FOLDER"], encrypted_filename)
 
-    raw_data = file.read()
-    encrypted_data = encrypt_file(raw_data)
-
-    filename = file.filename + ".enc"
-    path = os.path.join(current_app.config["UPLOAD_FOLDER"], filename)
-    with open(path, "wb") as f:
+    with open(local_path, "wb") as f:
         f.write(encrypted_data)
 
-    size_kb = os.path.getsize(path) / 1024
+    drive_service = create_drive_service(current_user.id)
+    if drive_service:
+        try:
+            metadata = {"name": encrypted_filename}
+            media = MediaFileUpload(local_path, mimetype="application/octet-stream")
+            drive_service.files().create(body=metadata, media_body=media).execute()
+            flash("Archivo subido a Google Drive.")
+        except Exception as e:
+            flash(f"Error al subir a Google Drive: {e}")
+    else:
+        flash("Tu cuenta no está conectada a Google Drive.")
+
+    size_kb = os.path.getsize(local_path) / 1024
     now = datetime.now()
-
-    # 👇 Subida automática a Google Drive
-    try:
-        drive_file_id = upload_to_drive(path, filename)
-        flash(f"Archivo subido correctamente y respaldado en Google Drive. ID: {drive_file_id}")
-    except Exception as e:
-        flash(f"Error al subir a Google Drive: {e}")
-        drive_file_id = None
-
-    new_backup = Backup(
-        filename=filename,
-        size_kb=size_kb,
-        timestamp=now,
-        user_id=current_user.id
-    )
+    new_backup = Backup(filename=encrypted_filename, size_kb=size_kb, timestamp=now, user_id=current_user.id)
     db.session.add(new_backup)
     db.session.commit()
 
@@ -111,43 +98,32 @@ def delete_file(filename):
     if os.path.isfile(file_path):
         os.remove(file_path)
 
-    backup.eliminado = True  # 👈 Solo lo marca como eliminado
+    backup.eliminado = True
     db.session.commit()
     flash(f"Archivo '{filename}' movido a la papelera.")
     return redirect(url_for("main.index"))
-
 
 @main.route("/historial")
 @login_required
 def historial():
     backups = Backup.query.filter_by(user_id=current_user.id).order_by(Backup.timestamp.desc()).all()
-
-    registros = []
-    for b in backups:
-        full_path = os.path.join(current_app.config["UPLOAD_FOLDER"], b.filename)
-        existe = os.path.isfile(full_path)
-        registros.append({
-            "name": b.filename,
-            "size": f"{b.size_kb:.1f} KB",
-            "date": b.timestamp.strftime('%Y-%m-%d %H:%M'),
-            "status": "Disponible" if existe else "Eliminado"
-        })
-
+    registros = [{
+        "name": b.filename,
+        "size": f"{b.size_kb:.1f} KB",
+        "date": b.timestamp.strftime('%Y-%m-%d %H:%M'),
+        "status": "Disponible" if os.path.isfile(os.path.join(current_app.config["UPLOAD_FOLDER"], b.filename)) else "Eliminado"
+    } for b in backups]
     return render_template("historial.html", registros=registros)
 
 @main.route("/papelera")
 @login_required
 def papelera():
     backups = Backup.query.filter_by(user_id=current_user.id, eliminado=True).order_by(Backup.timestamp.desc()).all()
-
-    archivos = []
-    for b in backups:
-        archivos.append({
-            "name": b.filename,
-            "size": f"{b.size_kb:.1f} KB",
-            "date": b.timestamp.strftime('%Y-%m-%d %H:%M')
-        })
-
+    archivos = [{
+        "name": b.filename,
+        "size": f"{b.size_kb:.1f} KB",
+        "date": b.timestamp.strftime('%Y-%m-%d %H:%M')
+    } for b in backups]
     return render_template("papelera.html", archivos=archivos)
 
 @main.route("/restaurar/<filename>", methods=["POST"])
@@ -163,3 +139,18 @@ def restaurar_file(filename):
     flash(f"Archivo '{filename}' restaurado.")
     return redirect(url_for("main.papelera"))
 
+@main.route("/connect_drive")
+@login_required
+def connect_drive():
+    flow = get_flow()
+    auth_url, _ = flow.authorization_url(prompt='consent')
+    return redirect(auth_url)
+
+@main.route("/oauth2callback")
+@login_required
+def oauth2callback():
+    flow = get_flow()
+    flow.fetch_token(authorization_response=request.url)
+    save_user_token(current_user.id, flow.credentials)
+    flash("Google Drive conectado exitosamente.")
+    return redirect(url_for("main.index"))

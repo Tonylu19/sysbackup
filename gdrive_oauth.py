@@ -1,22 +1,24 @@
 import os
 import json
-import pickle
 from google_auth_oauthlib.flow import Flow
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
-# ⚠️ Esto habilita HTTP solo en desarrollo local (localhost)
-if os.getenv("REDIRECT_URI", "").startswith("http://"):
+# Detectar entorno y permitir HTTP solo si es local
+redirect_uri = os.getenv("REDIRECT_URI", "")
+if redirect_uri.startswith("http://"):
     os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
 
 SCOPES = ["https://www.googleapis.com/auth/drive.file"]
 
 def get_flow():
+    # Cargar credenciales desde variable de entorno
     credentials = json.loads(os.getenv("GOOGLE_CREDENTIALS"))
+
     flow = Flow.from_client_config(
-        credentials,
+        credentials,  # Ya incluye "web"
         scopes=SCOPES,
-        redirect_uri=os.getenv("REDIRECT_URI")
+        redirect_uri=redirect_uri  # Usar la URI del entorno
     )
     return flow
 

@@ -12,9 +12,11 @@ if not os.getenv("RENDER"):
 SCOPES = ["https://www.googleapis.com/auth/drive.file"]
 
 def get_flow():
+    # ✅ Aquí ya viene con "web", no la envuelvas de nuevo
     credentials = json.loads(os.getenv("GOOGLE_CREDENTIALS"))
+
     flow = Flow.from_client_config(
-        {"web": credentials},
+        credentials,
         scopes=SCOPES,
         redirect_uri=os.getenv("REDIRECT_URI")
     )

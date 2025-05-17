@@ -5,16 +5,14 @@ from google_auth_oauthlib.flow import Flow
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
-# ⚠️ Permitir HTTP solo en desarrollo local
-if not os.getenv("RENDER"):
+# ⚠️ Esto habilita HTTP solo en desarrollo local (localhost)
+if os.getenv("REDIRECT_URI", "").startswith("http://"):
     os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
 
 SCOPES = ["https://www.googleapis.com/auth/drive.file"]
 
 def get_flow():
-    # ✅ Aquí ya viene con "web", no la envuelvas de nuevo
     credentials = json.loads(os.getenv("GOOGLE_CREDENTIALS"))
-
     flow = Flow.from_client_config(
         credentials,
         scopes=SCOPES,
